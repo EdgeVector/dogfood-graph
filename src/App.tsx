@@ -10,6 +10,8 @@ import {
   type DogfoodSession,
   type GoalRevision,
   type Observation,
+  type ScreenshotAnnotation,
+  type ScreenshotAsset,
   type UxEdge,
   type UxNode,
 } from "./data";
@@ -32,6 +34,44 @@ function App() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [currentRunNodeId, setCurrentRunNodeId] = useState(revision.entry_node_ids[0]);
   const [observations, setObservations] = useState<Observation[]>(fixtureObservations);
+  const [screenshots, setScreenshots] = useState<ScreenshotAsset[]>([
+    {
+      screenshotAsset_id: "screenshot-seed",
+      observation_id: fixtureObservations[0].observation_id,
+      asset_ref: "local://seed-installer-screen",
+      mime_type: "image/png",
+      width: "1440",
+      height: "900",
+      byte_size: "metadata-only",
+      captured_at: fixtureObservations[0].captured_at,
+      redaction_state: "safe_to_share",
+      caption: "Installer setup entry point.",
+    },
+  ]);
+  const [annotations, setAnnotations] = useState<ScreenshotAnnotation[]>([
+    {
+      screenshotAnnotation_id: "annotation-seed",
+      screenshot_id: "screenshot-seed",
+      shape: "rect",
+      geometry: "x=0.12,y=0.18,w=0.34,h=0.12",
+      label: "Setup CTA",
+      body: "Primary setup entry point is visible.",
+      severity: "info",
+      linked_expected_check: "Installer shows setup entry point",
+    },
+  ]);
+  const [selectedObservationId, setSelectedObservationId] = useState(
+    fixtureObservations[0].observation_id,
+  );
+  const [selectedScreenshotId, setSelectedScreenshotId] = useState("screenshot-seed");
+  const [annotationDraft, setAnnotationDraft] = useState({
+    shape: "rect" as ScreenshotAnnotation["shape"],
+    geometry: "x=0.10,y=0.10,w=0.30,h=0.20",
+    label: "Visible issue",
+    body: "",
+    severity: "papercut" as ScreenshotAnnotation["severity"],
+    linked_expected_check: "",
+  });
   const [capture, setCapture] = useState({
     actual_title: "Installer opened",
     actual_state: "Setup entry point was visible.",
@@ -47,6 +87,18 @@ function App() {
   const selectedEdge = edges.find((edge) => edge.uxEdge_id === selectedEdgeId);
   const currentRunNode = nodes.find((node) => node.uxNode_id === currentRunNodeId);
   const availableBranches = edges.filter((edge) => edge.from_node_id === currentRunNodeId);
+  const selectedObservation = observations.find(
+    (observation) => observation.observation_id === selectedObservationId,
+  );
+  const observationScreenshots = screenshots.filter(
+    (screenshot) => screenshot.observation_id === selectedObservationId,
+  );
+  const selectedScreenshot =
+    screenshots.find((screenshot) => screenshot.screenshotAsset_id === selectedScreenshotId) ??
+    observationScreenshots[0];
+  const screenshotAnnotations = annotations.filter(
+    (annotation) => annotation.screenshot_id === selectedScreenshot?.screenshotAsset_id,
+  );
   const validationIssues = useMemo(
     () => validateGoalDag(revision, nodes, edges),
     [revision, nodes, edges],
@@ -167,6 +219,7 @@ function App() {
       captured_at: new Date().toISOString(),
     };
     setObservations((current) => [...current, nextObservation]);
+    setSelectedObservationId(nextObservation.observation_id);
     if (selectedBranch && !capture.unexpected) {
       setCurrentRunNodeId(selectedBranch.to_node_id);
       setCapture((current) => ({
@@ -194,6 +247,53 @@ function App() {
       ended_at: new Date().toISOString(),
       summary: `${observations.length} observations recorded.`,
     }));
+  }
+
+  function addScreenshotFromFile(file: File) {
+    const nextId = `screenshot-${screenshots.length + 1}`;
+    const next: ScreenshotAsset = {
+      screenshotAsset_id: nextId,
+      observation_id: selectedObservationId,
+      asset_ref: `local://${file.name}`,
+      mime_type: file.type || "application/octet-stream",
+      width: "unknown",
+      height: "unknown",
+      byte_size: String(file.size),
+      captured_at: new Date().toISOString(),
+      redaction_state: "raw",
+      caption: file.name,
+    };
+    setScreenshots((current) => [...current, next]);
+    setSelectedScreenshotId(nextId);
+  }
+
+  function addPastedScreenshot() {
+    const nextId = `screenshot-${screenshots.length + 1}`;
+    const next: ScreenshotAsset = {
+      screenshotAsset_id: nextId,
+      observation_id: selectedObservationId,
+      asset_ref: `clipboard://${nextId}`,
+      mime_type: "image/png",
+      width: "unknown",
+      height: "unknown",
+      byte_size: "clipboard",
+      captured_at: new Date().toISOString(),
+      redaction_state: "raw",
+      caption: "Pasted screenshot evidence",
+    };
+    setScreenshots((current) => [...current, next]);
+    setSelectedScreenshotId(nextId);
+  }
+
+  function addAnnotation() {
+    if (!selectedScreenshot) return;
+    const next: ScreenshotAnnotation = {
+      screenshotAnnotation_id: `annotation-${annotations.length + 1}`,
+      screenshot_id: selectedScreenshot.screenshotAsset_id,
+      ...annotationDraft,
+    };
+    setAnnotations((current) => [...current, next]);
+    setAnnotationDraft((current) => ({ ...current, body: "" }));
   }
 
   return (
@@ -691,6 +791,208 @@ function App() {
                     <strong>{observation.actual_title}</strong>
                     <span>{observation.verdict}</span>
                     <p>{observation.actual_state}</p>
+                  </article>
+                ))}
+              </div>
+            </article>
+          </section>
+        ) : activeView === "Evidence" ? (
+          <section className="evidence-grid" aria-label="Evidence review">
+            <article className="panel observation-panel">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">Observations</p>
+                  <h3>Session Evidence</h3>
+                </div>
+              </div>
+              <div className="outline-list">
+                {observations.map((observation) => (
+                  <button
+                    type="button"
+                    key={observation.observation_id}
+                    className={
+                      observation.observation_id === selectedObservationId
+                        ? "selected"
+                        : undefined
+                    }
+                    onClick={() => {
+                      setSelectedObservationId(observation.observation_id);
+                      const firstScreenshot = screenshots.find(
+                        (screenshot) =>
+                          screenshot.observation_id === observation.observation_id,
+                      );
+                      if (firstScreenshot) {
+                        setSelectedScreenshotId(firstScreenshot.screenshotAsset_id);
+                      }
+                    }}
+                  >
+                    <span>{observation.actual_title}</span>
+                    <small>{observation.verdict}</small>
+                  </button>
+                ))}
+              </div>
+            </article>
+
+            <article className="panel evidence-drop-panel">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">Screenshot Assets</p>
+                  <h3>{selectedObservation?.actual_title ?? "Select observation"}</h3>
+                </div>
+                <span className="status-pill">{observationScreenshots.length}</span>
+              </div>
+              <div
+                className="drop-zone"
+                tabIndex={0}
+                onPaste={(event) => {
+                  if (event.clipboardData.files.length > 0) {
+                    addScreenshotFromFile(event.clipboardData.files[0]);
+                  } else {
+                    addPastedScreenshot();
+                  }
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const file = event.dataTransfer.files[0];
+                  if (file) addScreenshotFromFile(file);
+                }}
+              >
+                <strong>Drop or paste screenshot evidence</strong>
+                <span>Metadata is stored separately from image bytes.</span>
+                <input
+                  aria-label="Upload screenshot"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) addScreenshotFromFile(file);
+                  }}
+                />
+              </div>
+
+              <div className="screenshot-list">
+                {observationScreenshots.map((screenshot) => (
+                  <button
+                    type="button"
+                    key={screenshot.screenshotAsset_id}
+                    className={
+                      screenshot.screenshotAsset_id === selectedScreenshot?.screenshotAsset_id
+                        ? "selected"
+                        : undefined
+                    }
+                    onClick={() => setSelectedScreenshotId(screenshot.screenshotAsset_id)}
+                  >
+                    <strong>{screenshot.caption}</strong>
+                    <span>{screenshot.mime_type}</span>
+                    <span>{screenshot.byte_size} bytes</span>
+                    <span>{screenshot.redaction_state}</span>
+                  </button>
+                ))}
+              </div>
+            </article>
+
+            <article className="panel annotation-panel">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">Annotations</p>
+                  <h3>{selectedScreenshot?.caption ?? "No screenshot selected"}</h3>
+                </div>
+              </div>
+              <div className="form-grid">
+                <label>
+                  Shape
+                  <select
+                    value={annotationDraft.shape}
+                    onChange={(event) =>
+                      setAnnotationDraft((current) => ({
+                        ...current,
+                        shape: event.target.value as ScreenshotAnnotation["shape"],
+                      }))
+                    }
+                  >
+                    <option value="rect">rect</option>
+                    <option value="arrow">arrow</option>
+                    <option value="pin">pin</option>
+                    <option value="freehand">freehand</option>
+                  </select>
+                </label>
+                <label>
+                  Geometry
+                  <input
+                    value={annotationDraft.geometry}
+                    onChange={(event) =>
+                      setAnnotationDraft((current) => ({
+                        ...current,
+                        geometry: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Label
+                  <input
+                    value={annotationDraft.label}
+                    onChange={(event) =>
+                      setAnnotationDraft((current) => ({
+                        ...current,
+                        label: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Severity
+                  <select
+                    value={annotationDraft.severity}
+                    onChange={(event) =>
+                      setAnnotationDraft((current) => ({
+                        ...current,
+                        severity: event.target.value as ScreenshotAnnotation["severity"],
+                      }))
+                    }
+                  >
+                    <option value="info">info</option>
+                    <option value="papercut">papercut</option>
+                    <option value="bug">bug</option>
+                    <option value="blocker">blocker</option>
+                  </select>
+                </label>
+                <label>
+                  Linked Expected Check
+                  <input
+                    value={annotationDraft.linked_expected_check}
+                    onChange={(event) =>
+                      setAnnotationDraft((current) => ({
+                        ...current,
+                        linked_expected_check: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Note
+                  <textarea
+                    value={annotationDraft.body}
+                    onChange={(event) =>
+                      setAnnotationDraft((current) => ({
+                        ...current,
+                        body: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+              <button type="button" onClick={addAnnotation} disabled={!selectedScreenshot}>
+                Add Annotation
+              </button>
+
+              <div className="annotation-list">
+                {screenshotAnnotations.map((annotation) => (
+                  <article key={annotation.screenshotAnnotation_id}>
+                    <strong>{annotation.label}</strong>
+                    <span>{annotation.shape}</span>
+                    <p>{annotation.body || annotation.geometry}</p>
                   </article>
                 ))}
               </div>
