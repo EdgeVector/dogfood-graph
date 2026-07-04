@@ -38,4 +38,14 @@ describe("App", () => {
 
     expect(screen.getByText("Copy issue")).toBeInTheDocument();
   });
+
+  it("shows generated diff review items", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Diffs" }));
+
+    expect(screen.getByRole("heading", { name: "Diffs" })).toBeInTheDocument();
+    expect(screen.getByText("missing_node")).toBeInTheDocument();
+    expect(screen.getByText("goal_not_satisfied")).toBeInTheDocument();
+  });
 });

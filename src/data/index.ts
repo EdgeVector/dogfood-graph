@@ -1,4 +1,5 @@
 export * from "./dogfoodSchemas";
+export * from "./diffEngine";
 export * from "./fixtures";
 export * from "./graphValidation";
 export * from "./lastdbClient";
