@@ -35,6 +35,12 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  border-color: #aab5c2;
+  background: #aab5c2;
+  cursor: not-allowed;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr);
@@ -264,6 +270,117 @@ textarea {
   padding-left: 20px;
 }
 
+.runner-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.25fr);
+  gap: 16px;
+}
+
+.session-setup,
+.current-node-panel,
+.timeline-panel {
+  align-content: start;
+}
+
+.current-node-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.current-node-panel p {
+  color: #526070;
+}
+
+.status-pill {
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: #ffffff;
+  background: #526070;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.status-completed {
+  background: #1f6f64;
+}
+
+.status-blocked {
+  background: #a74343;
+}
+
+.status-abandoned {
+  background: #6d7480;
+}
+
+.branch-list,
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.branch-list button,
+.status-actions button {
+  min-height: 34px;
+  border-color: #cfd8e3;
+  color: #223044;
+  background: #ffffff;
+}
+
+.branch-list button.selected {
+  border-color: #1f6f64;
+  color: #ffffff;
+  background: #1f6f64;
+}
+
+.capture-panel {
+  grid-column: 1 / -1;
+}
+
+.checkbox-label {
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: end;
+}
+
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+}
+
+.timeline-panel {
+  grid-column: 1 / -1;
+}
+
+.timeline-list {
+  display: grid;
+  gap: 10px;
+}
+
+.timeline-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  border: 1px solid #e2e8ef;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfd;
+}
+
+.timeline-list span {
+  color: #1f6f64;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.timeline-list p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #526070;
+}
+
 .summary-card {
   padding: 18px;
 }
@@ -379,7 +496,8 @@ textarea {
 
   .workspace-header,
   .empty-state,
-  .editor-grid {
+  .editor-grid,
+  .runner-grid {
     align-items: stretch;
     grid-template-columns: 1fr;
   }
