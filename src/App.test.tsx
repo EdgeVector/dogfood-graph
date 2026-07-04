@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import App from "./App";
 
@@ -12,5 +12,18 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "DAG Editor" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Node" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Graph Valid" })).toBeInTheDocument();
+  });
+
+  it("records a session observation", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Session Runner" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start Session" }));
+    fireEvent.change(screen.getByLabelText("Actual State"), {
+      target: { value: "The installer showed the setup entry point." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record Observation" }));
+
+    expect(screen.getByRole("heading", { name: "3 Observations" })).toBeInTheDocument();
   });
 });
