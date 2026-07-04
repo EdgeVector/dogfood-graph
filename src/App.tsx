@@ -6,6 +6,7 @@ import {
   fixtureNodes,
   fixtureObservations,
   fixtureSession,
+  generateSessionDiffs,
   validateGoalDag,
   type DogfoodSession,
   type GoalRevision,
@@ -98,6 +99,29 @@ function App() {
     observationScreenshots[0];
   const screenshotAnnotations = annotations.filter(
     (annotation) => annotation.screenshot_id === selectedScreenshot?.screenshotAsset_id,
+  );
+  const generatedDiffs = useMemo(
+    () =>
+      generateSessionDiffs({
+        session,
+        revision,
+        nodes,
+        edges,
+        observations,
+        screenshots,
+      }),
+    [session, revision, nodes, edges, observations, screenshots],
+  );
+  const diffGroups = useMemo(
+    () =>
+      generatedDiffs.reduce(
+        (groups, diff) => {
+          groups[diff.severity] = [...(groups[diff.severity] ?? []), diff];
+          return groups;
+        },
+        {} as Record<string, typeof generatedDiffs>,
+      ),
+    [generatedDiffs],
   );
   const validationIssues = useMemo(
     () => validateGoalDag(revision, nodes, edges),
@@ -997,6 +1021,52 @@ function App() {
                 ))}
               </div>
             </article>
+          </section>
+        ) : activeView === "Diffs" ? (
+          <section className="diff-grid" aria-label="Diff review">
+            <article className="panel diff-summary">
+              <div>
+                <p className="eyebrow">Generated Review</p>
+                <h3>{generatedDiffs.length} Diff Items</h3>
+              </div>
+              <div className="diff-counts">
+                {["blocker", "bug", "papercut", "info"].map((severity) => (
+                  <span key={severity}>
+                    <strong>{diffGroups[severity]?.length ?? 0}</strong>
+                    {severity}
+                  </span>
+                ))}
+              </div>
+            </article>
+
+            {["blocker", "bug", "papercut", "info"].map((severity) => (
+              <article className="panel diff-group" key={severity}>
+                <div className="panel-header">
+                  <div>
+                    <p className="eyebrow">{severity}</p>
+                    <h3>{diffGroups[severity]?.length ?? 0} Items</h3>
+                  </div>
+                </div>
+                <div className="diff-list">
+                  {(diffGroups[severity] ?? []).map((diff) => (
+                    <article key={diff.diffItem_id}>
+                      <div>
+                        <strong>{diff.category}</strong>
+                        <span>{diff.suggested_next_action}</span>
+                      </div>
+                      <p>{diff.summary}</p>
+                      <small>
+                        {diff.expected_ref ? `Expected: ${diff.expected_ref}` : "No expected ref"}
+                        {diff.observation_id ? ` | Observation: ${diff.observation_id}` : ""}
+                        {diff.screenshot_ids.length > 0
+                          ? ` | Screenshots: ${diff.screenshot_ids.join(", ")}`
+                          : ""}
+                      </small>
+                    </article>
+                  ))}
+                </div>
+              </article>
+            ))}
           </section>
         ) : (
           <div className="empty-state">

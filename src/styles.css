@@ -457,6 +457,77 @@ textarea {
   color: #526070;
 }
 
+.diff-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.diff-summary {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.diff-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.diff-counts span {
+  display: grid;
+  min-width: 86px;
+  border: 1px solid #dfe5ec;
+  border-radius: 8px;
+  padding: 10px;
+  color: #526070;
+  background: #fbfcfd;
+  text-transform: capitalize;
+}
+
+.diff-counts strong {
+  color: #17202b;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.diff-list {
+  display: grid;
+  gap: 10px;
+}
+
+.diff-list article {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #e2e8ef;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfd;
+}
+
+.diff-list article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.diff-list span {
+  color: #1f6f64;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.diff-list p,
+.diff-list small {
+  margin: 0;
+  color: #526070;
+}
+
 .summary-card {
   padding: 18px;
 }
@@ -574,9 +645,15 @@ textarea {
   .empty-state,
   .editor-grid,
   .runner-grid,
-  .evidence-grid {
+  .evidence-grid,
+  .diff-grid {
     align-items: stretch;
     grid-template-columns: 1fr;
+  }
+
+  .diff-summary {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .screenshot-list button {
