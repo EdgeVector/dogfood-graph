@@ -6,7 +6,8 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  ci-required:
+    name: ci-required
     runs-on: ubuntu-latest
 
     steps:
