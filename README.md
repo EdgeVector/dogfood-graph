@@ -37,5 +37,41 @@ The first implementation should focus on:
 
 ## Repository Status
 
-This repo has been created as the public home for Dogfood Graph. Implementation
-planning is tracked in F-Kanban.
+This repo contains the initial public app scaffold. Implementation planning is
+tracked in F-Brain and executable PR-sized work is tracked in F-Kanban.
+
+## Local Development
+
+Requirements:
+
+- Node.js 22 or newer
+- npm 10 or newer
+
+Install dependencies:
+
+```sh
+npm install
+```
+
+Start the development server:
+
+```sh
+npm run dev
+```
+
+Run the validation suite:
+
+```sh
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+## App Stack
+
+- Vite for the local dev server and production build
+- React with TypeScript for the UI
+- Vitest and Testing Library for component tests
+- ESLint for static checks
+- GitHub Actions for CI on pull requests and pushes to `main`
