@@ -25,6 +25,7 @@ function schema(
   purpose: string,
   fields: readonly string[],
   fieldTypes: Record<string, typeof text | typeof textList> = {},
+  keyField = `${name[0].toLowerCase()}${name.slice(1)}_id`,
 ): SchemaDefinition {
   return {
     name,
@@ -32,7 +33,7 @@ function schema(
     descriptive_name: name,
     purpose_statement: purpose,
     schema_type: "Hash",
-    key: { hash_field: `${name[0].toLowerCase()}${name.slice(1)}_id` },
+    key: { hash_field: keyField },
     fields: [...fields],
     field_types: Object.fromEntries(
       fields.map((field) => [field, fieldTypes[field] ?? text]),
@@ -131,7 +132,7 @@ export const dogfoodSchemas = {
     ],
   ),
   Observation: schema(
-    "Observation",
+    "DogfoodObservation",
     "Evidence for what was actually seen at one point in a session.",
     [
       "observation_id",
@@ -147,6 +148,8 @@ export const dogfoodSchemas = {
       "notes",
       "captured_at",
     ],
+    {},
+    "observation_id",
   ),
   ScreenshotAsset: schema(
     "ScreenshotAsset",
