@@ -381,6 +381,82 @@ textarea {
   color: #526070;
 }
 
+.evidence-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(340px, 1.2fr);
+  gap: 16px;
+}
+
+.annotation-panel {
+  grid-column: 1 / -1;
+}
+
+.drop-zone {
+  display: grid;
+  gap: 8px;
+  border: 1px dashed #9fb0c1;
+  border-radius: 8px;
+  padding: 18px;
+  color: #526070;
+  background: #fbfcfd;
+}
+
+.drop-zone strong {
+  color: #223044;
+}
+
+.drop-zone input {
+  max-width: 360px;
+  padding: 8px;
+}
+
+.screenshot-list,
+.annotation-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.screenshot-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+  gap: 8px 12px;
+  min-height: 58px;
+  border: 1px solid #d9e1ea;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #223044;
+  background: #ffffff;
+  text-align: left;
+}
+
+.screenshot-list button.selected {
+  border-color: #1f6f64;
+  background: #eef8f5;
+}
+
+.screenshot-list span,
+.annotation-list span {
+  color: #647184;
+  font-size: 0.82rem;
+}
+
+.annotation-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  border: 1px solid #e2e8ef;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfd;
+}
+
+.annotation-list p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #526070;
+}
+
 .summary-card {
   padding: 18px;
 }
@@ -497,8 +573,13 @@ textarea {
   .workspace-header,
   .empty-state,
   .editor-grid,
-  .runner-grid {
+  .runner-grid,
+  .evidence-grid {
     align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .screenshot-list button {
     grid-template-columns: 1fr;
   }
 

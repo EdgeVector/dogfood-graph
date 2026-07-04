@@ -26,4 +26,16 @@ describe("App", () => {
 
     expect(screen.getByRole("heading", { name: "3 Observations" })).toBeInTheDocument();
   });
+
+  it("adds an evidence annotation", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Evidence" }));
+    fireEvent.change(screen.getByLabelText("Label"), {
+      target: { value: "Copy issue" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add Annotation" }));
+
+    expect(screen.getByText("Copy issue")).toBeInTheDocument();
+  });
 });
