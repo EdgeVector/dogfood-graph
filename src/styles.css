@@ -528,6 +528,55 @@ textarea {
   color: #526070;
 }
 
+.proposal-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(340px, 1.1fr);
+  gap: 16px;
+}
+
+.proposal-editor,
+.proposal-validation,
+.proposal-history {
+  align-content: start;
+}
+
+.proposal-editor {
+  display: grid;
+  gap: 16px;
+}
+
+.operation-list {
+  display: grid;
+  gap: 10px;
+}
+
+.operation-list article {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #e2e8ef;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfd;
+}
+
+.operation-list code {
+  overflow-wrap: anywhere;
+  color: #526070;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+}
+
+.proposal-validation,
+.proposal-history {
+  grid-column: 1 / -1;
+}
+
+.proposal-validation p,
+.proposal-validation ul {
+  margin: 0;
+  color: #526070;
+}
+
 .summary-card {
   padding: 18px;
 }
@@ -646,7 +695,8 @@ textarea {
   .editor-grid,
   .runner-grid,
   .evidence-grid,
-  .diff-grid {
+  .diff-grid,
+  .proposal-grid {
     align-items: stretch;
     grid-template-columns: 1fr;
   }

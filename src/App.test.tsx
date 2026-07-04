@@ -48,4 +48,15 @@ describe("App", () => {
     expect(screen.getByText("missing_node")).toBeInTheDocument();
     expect(screen.getByText("goal_not_satisfied")).toBeInTheDocument();
   });
+
+  it("applies a DAG change proposal", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Proposals" }));
+    expect(screen.getByRole("heading", { name: "3 Operations" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Apply Proposal" }));
+
+    expect(screen.getByRole("heading", { name: "1 Applied" })).toBeInTheDocument();
+    expect(screen.getByText("Result: goal-setup-v2")).toBeInTheDocument();
+  });
 });

@@ -6,8 +6,12 @@ import {
   fixtureNodes,
   fixtureObservations,
   fixtureSession,
+  applyPreviewAsRevision,
+  compileIntentToOperations,
   generateSessionDiffs,
+  previewDagPatch,
   validateGoalDag,
+  type DagChangeProposal,
   type DogfoodSession,
   type GoalRevision,
   type Observation,
@@ -17,7 +21,14 @@ import {
   type UxNode,
 } from "./data";
 
-const navItems = ["Flows", "DAG Editor", "Session Runner", "Evidence", "Diffs"];
+const navItems = [
+  "Flows",
+  "DAG Editor",
+  "Session Runner",
+  "Evidence",
+  "Diffs",
+  "Proposals",
+];
 
 function App() {
   const [activeView, setActiveView] = useState("DAG Editor");
@@ -73,6 +84,10 @@ function App() {
     severity: "papercut" as ScreenshotAnnotation["severity"],
     linked_expected_check: "",
   });
+  const [proposalIntent, setProposalIntent] = useState(
+    "Add a recovery phrase confirmation screen before the dashboard.",
+  );
+  const [proposals, setProposals] = useState<DagChangeProposal[]>([]);
   const [capture, setCapture] = useState({
     actual_title: "Installer opened",
     actual_state: "Setup entry point was visible.",
@@ -122,6 +137,34 @@ function App() {
         {} as Record<string, typeof generatedDiffs>,
       ),
     [generatedDiffs],
+  );
+  const proposalOperations = useMemo(
+    () =>
+      compileIntentToOperations({
+        intent: proposalIntent,
+        revision,
+        nodes,
+      }),
+    [proposalIntent, revision, nodes],
+  );
+  const proposalPreview = useMemo(
+    () =>
+      previewDagPatch({
+        revision,
+        nodes,
+        edges,
+        operations: proposalOperations,
+      }),
+    [revision, nodes, edges, proposalOperations],
+  );
+  const proposalValidationIssues = useMemo(
+    () =>
+      validateGoalDag(
+        proposalPreview.revision,
+        proposalPreview.nodes,
+        proposalPreview.edges,
+      ),
+    [proposalPreview],
   );
   const validationIssues = useMemo(
     () => validateGoalDag(revision, nodes, edges),
@@ -318,6 +361,28 @@ function App() {
     };
     setAnnotations((current) => [...current, next]);
     setAnnotationDraft((current) => ({ ...current, body: "" }));
+  }
+
+  function applyProposal() {
+    const nextNumber = revisionCount + 1;
+    const nextRevisionId = `goal-setup-v${nextNumber}`;
+    const applied = applyPreviewAsRevision(proposalPreview, nextRevisionId);
+    const proposal: DagChangeProposal = {
+      dagChangeProposal_id: `proposal-${proposals.length + 1}`,
+      flow_id: fixtureFlow.dogfoodFlow_id,
+      base_goal_revision_id: revision.goalRevision_id,
+      author: "dogfood-graph",
+      created_at: new Date().toISOString(),
+      intent: proposalIntent,
+      ops: JSON.stringify(proposalOperations, null, 2),
+      status: "applied",
+      result_goal_revision_id: nextRevisionId,
+    };
+    setRevision(applied.revision);
+    setNodes(applied.nodes);
+    setEdges(applied.edges);
+    setRevisionCount(nextNumber);
+    setProposals((current) => [...current, proposal]);
   }
 
   return (
@@ -1067,6 +1132,92 @@ function App() {
                 </div>
               </article>
             ))}
+          </section>
+        ) : activeView === "Proposals" ? (
+          <section className="proposal-grid" aria-label="DAG change proposals">
+            <article className="panel proposal-editor">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">Intent</p>
+                  <h3>Change Proposal</h3>
+                </div>
+              </div>
+              <label>
+                User Intent
+                <textarea
+                  value={proposalIntent}
+                  onChange={(event) => setProposalIntent(event.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={applyProposal}
+                disabled={proposalValidationIssues.length > 0}
+              >
+                Apply Proposal
+              </button>
+            </article>
+
+            <article className="panel operation-preview">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">Preview</p>
+                  <h3>{proposalOperations.length} Operations</h3>
+                </div>
+                <span className="status-pill">
+                  {proposalValidationIssues.length === 0 ? "valid" : "blocked"}
+                </span>
+              </div>
+              <div className="operation-list">
+                {proposalOperations.map((operation, index) => (
+                  <article key={`${operation.type}-${index}`}>
+                    <strong>{operation.type}</strong>
+                    <code>{JSON.stringify(operation)}</code>
+                  </article>
+                ))}
+              </div>
+            </article>
+
+            <article className="panel proposal-validation">
+              <div>
+                <p className="eyebrow">Patch Validation</p>
+                <h3>
+                  {proposalValidationIssues.length === 0
+                    ? "Preview Valid"
+                    : "Preview Blocked"}
+                </h3>
+              </div>
+              {proposalValidationIssues.length === 0 ? (
+                <p>
+                  The preview creates {proposalPreview.nodes.length} nodes and{" "}
+                  {proposalPreview.edges.length} edges in a new immutable revision.
+                </p>
+              ) : (
+                <ul>
+                  {proposalValidationIssues.map((issue) => (
+                    <li key={`${issue.code}-${issue.message}`}>{issue.message}</li>
+                  ))}
+                </ul>
+              )}
+            </article>
+
+            <article className="panel proposal-history">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">History</p>
+                  <h3>{proposals.length} Applied</h3>
+                </div>
+              </div>
+              <div className="timeline-list">
+                {proposals.map((proposal) => (
+                  <article key={proposal.dagChangeProposal_id}>
+                    <strong>{proposal.intent}</strong>
+                    <span>{proposal.status}</span>
+                    <p>Result: {proposal.result_goal_revision_id}</p>
+                  </article>
+                ))}
+              </div>
+            </article>
           </section>
         ) : (
           <div className="empty-state">
