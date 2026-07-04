@@ -9,9 +9,8 @@ describe("App", () => {
     expect(
       screen.getByRole("heading", { name: "Dogfood Graph" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Flows" })).toBeInTheDocument();
-    expect(
-      screen.getByText("No dogfood flows yet"),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "DAG Editor" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Node" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Graph Valid" })).toBeInTheDocument();
   });
 });
