@@ -17,6 +17,7 @@ export const DIFF_CATEGORIES = [
   "branch_delta",
   "blocked",
   "evidence_gap",
+  "note",
   "goal_satisfied",
   "goal_not_satisfied",
 ] as const satisfies readonly DiffItem["category"][];
@@ -114,6 +115,18 @@ export function generateSessionDiffs(input: {
         severity: "info",
         summary: `${observation.actual_title} has notes but no screenshot evidence.`,
         suggested_next_action: "rerun",
+      }));
+    }
+
+    const trimmedNotes = observation.notes?.trim();
+    if (trimmedNotes) {
+      diffs.push(diff("note", session, revision, {
+        expected_ref: observation.expected_node_id,
+        observation_id: observation.observation_id,
+        severity: "info",
+        summary: `${observation.actual_title}: ${trimmedNotes}`,
+        suggested_next_action: "file_product_bug",
+        screenshot_ids: linkedScreenshots.map((screenshot) => screenshot.screenshotAsset_id),
       }));
     }
   }

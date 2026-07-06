@@ -113,6 +113,7 @@ export type DiffItem = {
     | "branch_delta"
     | "blocked"
     | "evidence_gap"
+    | "note"
     | "goal_satisfied"
     | "goal_not_satisfied";
   expected_ref?: string;
