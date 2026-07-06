@@ -17,6 +17,40 @@ export type LastDbNodeClientOptions = {
 
 export type LastDbSchemaMap = Record<DogfoodSchemaName, string>;
 
+// Field renames the node's materialized schema expects, keyed by app-local
+// field name (e.g. `goal_revision_id` -> `current_goal_revision_id`). The
+// schema service unifies same-purpose fields onto one canonical name when a
+// schema is registered through it and reports the renames as
+// `mutation_mappers`; writers must apply them or mutations fail with
+// `unknown_fields`. Nodes that materialize app-declared schemas verbatim
+// produce no mappers, so an absent/empty mapper is a no-op.
+export type LastDbFieldMapper = Record<string, string>;
+
+export type LastDbFieldMapperMap = Partial<Record<DogfoodSchemaName, LastDbFieldMapper>>;
+
+export function applyFieldMapper(
+  record: Record<string, unknown>,
+  mapper: LastDbFieldMapper | undefined,
+): Record<string, unknown> {
+  if (!mapper || Object.keys(mapper).length === 0) return record;
+  return Object.fromEntries(
+    Object.entries(record).map(([field, value]) => [mapper[field] ?? field, value]),
+  );
+}
+
+export function reverseFieldMapper(
+  record: Record<string, unknown>,
+  mapper: LastDbFieldMapper | undefined,
+): Record<string, unknown> {
+  if (!mapper || Object.keys(mapper).length === 0) return record;
+  const reversed = Object.fromEntries(
+    Object.entries(mapper).map(([appField, nodeField]) => [nodeField, appField]),
+  );
+  return Object.fromEntries(
+    Object.entries(record).map(([field, value]) => [reversed[field] ?? field, value]),
+  );
+}
+
 export type QueryRow<T = Record<string, unknown>> = {
   key?: { hash?: string | null; range?: string | null };
   fields: T;
@@ -127,12 +161,13 @@ export class LastDbNodeClient {
     record: Record<string, unknown>,
     keyHash: string,
     mutationType: "create" | "update" = "create",
+    fieldMapper?: LastDbFieldMapper,
   ) {
     await this.ensureUserHash();
     await this.request("POST", "/api/mutation", {
       type: "mutation",
       schema: schemaName,
-      fields_and_values: record,
+      fields_and_values: applyFieldMapper(record, fieldMapper),
       key_value: { hash: keyHash, range: null },
       mutation_type: mutationType,
     });
@@ -149,8 +184,13 @@ export class LastDbNodeClient {
     });
   }
 
-  async queryAll<T = Record<string, unknown>>(schemaName: string, fields: string[]) {
+  async queryAll<T = Record<string, unknown>>(
+    schemaName: string,
+    fields: string[],
+    fieldMapper?: LastDbFieldMapper,
+  ) {
     await this.ensureUserHash();
+    const requestFields = fields.map((field) => fieldMapper?.[field] ?? field);
     const rows: QueryRow<T>[] = [];
     const seen = new Set<string>();
     let offset = 0;
@@ -161,7 +201,7 @@ export class LastDbNodeClient {
         has_more?: boolean;
       }>("POST", "/api/query", {
         schema_name: schemaName,
-        fields,
+        fields: requestFields,
         limit: PAGE_SIZE,
         offset,
       });
@@ -171,7 +211,13 @@ export class LastDbNodeClient {
         const key = row.key?.hash ?? JSON.stringify(row.fields);
         if (seen.has(key)) continue;
         seen.add(key);
-        rows.push(row);
+        rows.push({
+          ...row,
+          fields: reverseFieldMapper(
+            row.fields as Record<string, unknown>,
+            fieldMapper,
+          ) as T,
+        });
         added += 1;
       }
       if (body.has_more !== true || pageRows.length === 0 || added === 0) break;
@@ -187,10 +233,15 @@ export class LastDbNodeClient {
   ): Promise<T> {
     const result = await this.tryRequest<T>(method, path, body);
     if (result.ok) return result.body;
-    const detail =
-      result.body && typeof result.body === "object" && "error" in result.body
-        ? String(result.body.error)
-        : JSON.stringify(result.body);
+    let detail = JSON.stringify(result.body);
+    if (result.body && typeof result.body === "object") {
+      // Error bodies carry a short `error` code plus an optional human
+      // `message` (e.g. unknown_fields lists the offending fields there).
+      const parts = ["error", "message"]
+        .map((key) => (result.body as Record<string, unknown>)[key])
+        .filter((value): value is string => typeof value === "string" && value.length > 0);
+      if (parts.length > 0) detail = parts.join(": ");
+    }
     throw new Error(`LastDB ${method} ${path} failed with ${result.status}: ${detail}`);
   }
 
