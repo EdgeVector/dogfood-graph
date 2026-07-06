@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { dogfoodSchemas, type DogfoodSchemaName } from "../data/dogfoodSchemas.ts";
+import { generateSessionDiffs } from "../data/diffEngine.ts";
 import {
   fixtureEdges,
   fixtureFlow,
@@ -52,7 +53,14 @@ function usage(): never {
   npm run lastdb -- list <SchemaName>
   npm run lastdb -- export
   npm run lastdb -- put <SchemaName> <record-json> [create|update]
+  npm run lastdb -- import <records.json> [create|update]
+  npm run lastdb -- diff <DogfoodSession-id>
   npm run lastdb -- delete <SchemaName> <id>
+
+import reads {"<SchemaName>": [record, ...], ...} and puts every record —
+stage one JSON file instead of shell-quoting per-record put calls.
+diff loads a stored session (revision, nodes, edges, observations,
+screenshots), runs the diff engine, and persists the resulting DiffItems.
 
 Config: ${CONFIG_PATH}
 Socket: DOGFOOD_GRAPH_LASTDB_SOCKET, FOLDDB_SOCKET_PATH, FBRAIN_FOLDDB_SOCKET, or ~/.folddb/data/folddb.sock`);
@@ -126,6 +134,94 @@ async function main() {
       mappers[schema],
     );
     console.log(JSON.stringify({ ok: true, schema, id: idOf(schema, record), mutation }));
+    return;
+  }
+
+  if (command === "import") {
+    const path = args[0];
+    if (!path) usage();
+    const mutation = args[1] === "update" ? "update" : "create";
+    const records = JSON.parse(await readFile(path, "utf8")) as Partial<
+      Record<DogfoodSchemaName, Record<string, unknown>[]>
+    >;
+    const unknown = Object.keys(records).filter((name) => !(name in dogfoodSchemas));
+    if (unknown.length > 0) {
+      throw new Error(`unknown schema name(s) in ${path}: ${unknown.join(", ")}`);
+    }
+    const schemas = await ensureSchemas(client);
+    const mappers = await readMappers();
+    const counts: Partial<Record<DogfoodSchemaName, number>> = {};
+    for (const schema of schemaNames()) {
+      const rows = records[schema] ?? [];
+      for (const record of rows) {
+        await client.putRecord(
+          schemas[schema],
+          record,
+          idOf(schema, record),
+          mutation,
+          mappers[schema],
+        );
+      }
+      if (rows.length > 0) counts[schema] = rows.length;
+    }
+    console.log(JSON.stringify({ ok: true, mutation, counts }, null, 2));
+    return;
+  }
+
+  if (command === "diff") {
+    const sessionId = args[0];
+    if (!sessionId) usage();
+    const schemas = await ensureSchemas(client);
+    const mappers = await readMappers();
+    const fetch = async <Name extends DogfoodSchemaName>(schema: Name) =>
+      (await client.queryAll(schemas[schema], schemaFields(schema), mappers[schema])).map(
+        (row) => row.fields,
+      ) as DogfoodRecordMap[Name][];
+
+    const session = (await fetch("DogfoodSession")).find(
+      (row) => row.dogfoodSession_id === sessionId,
+    );
+    if (!session) throw new Error(`DogfoodSession '${sessionId}' not found`);
+    const revision = (await fetch("GoalRevision")).find(
+      (row) => row.goalRevision_id === session.goal_revision_id,
+    );
+    if (!revision) {
+      throw new Error(
+        `GoalRevision '${session.goal_revision_id}' for session '${sessionId}' not found`,
+      );
+    }
+    const nodes = (await fetch("UxNode")).filter(
+      (row) => row.goal_revision_id === revision.goalRevision_id,
+    );
+    const edges = (await fetch("UxEdge")).filter(
+      (row) => row.goal_revision_id === revision.goalRevision_id,
+    );
+    const observations = (await fetch("Observation")).filter(
+      (row) => row.session_id === sessionId,
+    );
+    const observationIds = new Set(observations.map((row) => row.observation_id));
+    const screenshots = (await fetch("ScreenshotAsset")).filter((row) =>
+      observationIds.has(row.observation_id),
+    );
+
+    const diffs = generateSessionDiffs({
+      session,
+      revision,
+      nodes,
+      edges,
+      observations,
+      screenshots,
+    });
+    for (const item of diffs) {
+      await client.putRecord(
+        schemas.DiffItem,
+        item as unknown as Record<string, unknown>,
+        item.diffItem_id,
+        "create",
+        mappers.DiffItem,
+      );
+    }
+    console.log(JSON.stringify({ ok: true, session: sessionId, diffs }, null, 2));
     return;
   }
 
