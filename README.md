@@ -68,6 +68,15 @@ npm test
 npm run build
 ```
 
+Validate repository bootstrap guidance and local Git credential hygiene:
+
+```sh
+npm run verify:repo-bootstrap
+```
+
+See [EdgeVector Repo Bootstrap](docs/repo-bootstrap.md) before creating or
+seeding new public EdgeVector repositories.
+
 ## App Stack
 
 - Vite for the local dev server and production build
