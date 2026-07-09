@@ -28,6 +28,18 @@ export type LastDbFieldMapper = Record<string, string>;
 
 export type LastDbFieldMapperMap = Partial<Record<DogfoodSchemaName, LastDbFieldMapper>>;
 
+export type LastDbRuntimeSchema = {
+  name?: string;
+  identity_hash?: string;
+  fields?: string[];
+};
+
+const FIELD_ALIASES: Record<string, string[]> = {
+  goal_revision_id: ["current_goal_revision_id"],
+  base_goal_revision_id: ["current_goal_revision_id"],
+  screenshot_ids: ["screenshot_id"],
+};
+
 export function applyFieldMapper(
   record: Record<string, unknown>,
   mapper: LastDbFieldMapper | undefined,
@@ -49,6 +61,40 @@ export function reverseFieldMapper(
   return Object.fromEntries(
     Object.entries(record).map(([field, value]) => [reversed[field] ?? field, value]),
   );
+}
+
+export function inferFieldMapper(
+  appFields: readonly string[],
+  runtimeFields: readonly string[],
+): LastDbFieldMapper {
+  const runtime = new Set(runtimeFields);
+  const entries = appFields.flatMap((field): [string, string][] => {
+    if (runtime.has(field)) return [];
+    const aliases = [
+      ...(FIELD_ALIASES[field] ?? []),
+      ...(field.endsWith("_goal_revision_id") ? ["current_goal_revision_id"] : []),
+      ...(field.endsWith("_ids") ? [field.slice(0, -1)] : []),
+    ];
+    const match = aliases.find((alias) => runtime.has(alias));
+    return match ? [[field, match]] : [];
+  });
+  return Object.fromEntries(entries);
+}
+
+export function mergeFieldMapperMaps(
+  ...maps: LastDbFieldMapperMap[]
+): LastDbFieldMapperMap {
+  const merged: LastDbFieldMapperMap = {};
+  for (const map of maps) {
+    for (const [schema, mapper] of Object.entries(map) as [
+      DogfoodSchemaName,
+      LastDbFieldMapper | undefined,
+    ][]) {
+      if (!mapper || Object.keys(mapper).length === 0) continue;
+      merged[schema] = { ...(merged[schema] ?? {}), ...mapper };
+    }
+  }
+  return merged;
 }
 
 export type QueryRow<T = Record<string, unknown>> = {
@@ -125,6 +171,32 @@ export class LastDbNodeClient {
       entries.push([schemaName, runtimeName]);
     }
     return Object.fromEntries(entries) as LastDbSchemaMap;
+  }
+
+  async listSchemas(): Promise<LastDbRuntimeSchema[]> {
+    await this.ensureUserHash();
+    const body = await this.request<{
+      schemas?: LastDbRuntimeSchema[];
+      data?: { schemas?: LastDbRuntimeSchema[] };
+    }>("GET", "/api/schemas");
+    return body.data?.schemas ?? body.schemas ?? [];
+  }
+
+  async inferFieldMappers(schemas: LastDbSchemaMap): Promise<LastDbFieldMapperMap> {
+    const runtimeSchemas = await this.listSchemas();
+    const entries = (Object.entries(schemas) as [DogfoodSchemaName, string][]).flatMap(
+      ([schemaName, runtimeName]): [DogfoodSchemaName, LastDbFieldMapper][] => {
+        const runtimeSchema = runtimeSchemas.find(
+          (schema) => schema.name === runtimeName || schema.identity_hash === runtimeName,
+        );
+        const mapper = inferFieldMapper(
+          dogfoodSchemas[schemaName].fields,
+          runtimeSchema?.fields ?? [],
+        );
+        return Object.keys(mapper).length > 0 ? [[schemaName, mapper]] : [];
+      },
+    );
+    return Object.fromEntries(entries) as LastDbFieldMapperMap;
   }
 
   async declareSchema(schema: SchemaDefinition) {

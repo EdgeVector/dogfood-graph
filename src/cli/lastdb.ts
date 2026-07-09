@@ -17,6 +17,7 @@ import {
   LastDbNodeClient,
   type LastDbFieldMapperMap,
   type LastDbSchemaMap,
+  mergeFieldMapperMaps,
 } from "../data/lastdbNodeClient.ts";
 import type { DogfoodRecordMap } from "../data/types.ts";
 
@@ -90,7 +91,7 @@ async function main() {
 
   if (command === "seed") {
     const schemas = await ensureSchemas(client);
-    const mappers = await readMappers();
+    const mappers = await loadMappers(client, schemas);
     const counts = await seedFixtures(client, schemas, mappers);
     console.log(JSON.stringify({ ok: true, counts, config: CONFIG_PATH }, null, 2));
     return;
@@ -99,7 +100,7 @@ async function main() {
   if (command === "list") {
     const schema = parseSchemaName(args[0]);
     const schemas = await ensureSchemas(client);
-    const mappers = await readMappers();
+    const mappers = await loadMappers(client, schemas);
     const rows = await client.queryAll(schemas[schema], schemaFields(schema), mappers[schema]);
     console.log(JSON.stringify(rows.map((row) => row.fields), null, 2));
     return;
@@ -107,7 +108,7 @@ async function main() {
 
   if (command === "export") {
     const schemas = await ensureSchemas(client);
-    const mappers = await readMappers();
+    const mappers = await loadMappers(client, schemas);
     const entries = await Promise.all(
       schemaNames().map(async (schema) => [
         schema,
@@ -125,7 +126,7 @@ async function main() {
     const record = parseRecord(args[1]);
     const mutation = args[2] === "update" ? "update" : "create";
     const schemas = await ensureSchemas(client);
-    const mappers = await readMappers();
+    const mappers = await loadMappers(client, schemas);
     await client.putRecord(
       schemas[schema],
       record,
@@ -149,7 +150,7 @@ async function main() {
       throw new Error(`unknown schema name(s) in ${path}: ${unknown.join(", ")}`);
     }
     const schemas = await ensureSchemas(client);
-    const mappers = await readMappers();
+    const mappers = await loadMappers(client, schemas);
     const counts: Partial<Record<DogfoodSchemaName, number>> = {};
     for (const schema of schemaNames()) {
       const rows = records[schema] ?? [];
@@ -172,7 +173,7 @@ async function main() {
     const sessionId = args[0];
     if (!sessionId) usage();
     const schemas = await ensureSchemas(client);
-    const mappers = await readMappers();
+    const mappers = await loadMappers(client, schemas);
     const fetch = async <Name extends DogfoodSchemaName>(schema: Name) =>
       (await client.queryAll(schemas[schema], schemaFields(schema), mappers[schema])).map(
         (row) => row.fields,
@@ -254,6 +255,15 @@ async function readConfig(): Promise<LastDbSchemaMap | null> {
 async function readMappers(): Promise<LastDbFieldMapperMap> {
   if (!existsSync(MAPPERS_PATH)) return {};
   return JSON.parse(await readFile(MAPPERS_PATH, "utf8")) as LastDbFieldMapperMap;
+}
+
+async function loadMappers(
+  client: LastDbNodeClient,
+  schemas: LastDbSchemaMap,
+): Promise<LastDbFieldMapperMap> {
+  const explicit = await readMappers();
+  const inferred = await client.inferFieldMappers(schemas);
+  return mergeFieldMapperMaps(inferred, explicit);
 }
 
 async function writeConfig(schemas: LastDbSchemaMap) {
