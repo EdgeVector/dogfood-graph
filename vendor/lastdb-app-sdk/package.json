@@ -1,0 +1,32 @@
+{
+  "name": "@lastdb/app-sdk",
+  "version": "0.2.0",
+  "description": "Runtime SDK for LastDB apps — connect, request consent, and query/mutate a node's /api/* surface with a capability. Vendored build (compiled dist) of fold/lastdb_app_sdk.",
+  "license": "MIT",
+  "homepage": "https://github.com/EdgeVector/fold/tree/main/lastdb_app_sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EdgeVector/fold.git",
+    "directory": "lastdb_app_sdk"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CONTRACT.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  }
+}

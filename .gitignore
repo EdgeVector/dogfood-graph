@@ -1,6 +1,8 @@
 node_modules/
-dist/
-coverage/
+# Anchor build outputs to the repo root so they don't also swallow the tracked
+# compiled build under vendor/ (e.g. vendor/lastdb-app-sdk/dist).
+/dist/
+/coverage/
 .DS_Store
 .env
 .env.local

@@ -67,11 +67,16 @@ describe("field mappers", () => {
   });
 
   it("queries physical fields and returns logical session fields", async () => {
-    const client = new LastDbNodeClient({ userHash: "dogfood-graph-test" });
+    // Mock the SDK data-plane transport: queryAll now drives the vendored
+    // `@lastdb/app-sdk` LastDbClient, whose only injection seam is the
+    // Transport. We assert the mapped request body and reverse-mapped rows the
+    // same way, but at the SDK boundary instead of the retired hand-rolled
+    // `rawRequest`.
     const requests: unknown[] = [];
-    Object.defineProperty(client, "rawRequest", {
-      value: async (_method: string, _path: string, body?: unknown) => {
-        requests.push(body);
+    const transport = {
+      target: "unix:mock",
+      async send(_method: string, _path: string, options?: { body?: unknown }) {
+        requests.push(options?.body);
         return {
           status: 200,
           body: {
@@ -89,7 +94,8 @@ describe("field mappers", () => {
           },
         };
       },
-    });
+    };
+    const client = new LastDbNodeClient({ userHash: "dogfood-graph-test", transport });
 
     const rows = await client.queryAll(
       "dogfood-graph/DogfoodSession",
