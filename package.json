@@ -13,6 +13,7 @@
     "verify:repo-bootstrap": "node scripts/verify-repo-bootstrap.mjs"
   },
   "dependencies": {
+    "@lastdb/app-sdk": "file:./vendor/lastdb-app-sdk",
     "@vitejs/plugin-react": "^5.0.0",
     "vite": "^7.0.0",
     "react": "^19.1.0",

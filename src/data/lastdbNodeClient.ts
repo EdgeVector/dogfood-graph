@@ -3,6 +3,16 @@ import { dirname, join } from "node:path";
 import http from "node:http";
 
 import {
+  LastDbClient,
+  capabilityStoreKey,
+  udsTransport,
+  type CapabilityStore,
+  type KeyValue,
+  type QueryRow as SdkQueryRow,
+  type Transport as SdkTransport,
+} from "@lastdb/app-sdk";
+
+import {
   DOGFOOD_GRAPH_APP_ID,
   dogfoodSchemas,
   type DogfoodSchemaName,
@@ -13,6 +23,13 @@ export type LastDbNodeClientOptions = {
   socketPath?: string;
   userHash?: string;
   timeoutMs?: number;
+  /**
+   * Inject the SDK data-plane transport (query/mutation). Tests pass a mock
+   * {@link SdkTransport} to exercise the mapper + pagination glue without a
+   * live node; production leaves it unset and the client builds a
+   * Unix-domain-socket transport over {@link socketPath}.
+   */
+  transport?: SdkTransport;
 };
 
 export type LastDbSchemaMap = Record<DogfoodSchemaName, string>;
@@ -98,22 +115,39 @@ export function mergeFieldMapperMaps(
 }
 
 export type QueryRow<T = Record<string, unknown>> = {
-  key?: { hash?: string | null; range?: string | null };
+  key?: KeyValue | null;
   fields: T;
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const PAGE_SIZE = 1000;
-const PAGE_LIMIT = 1000;
 const SOCKET_FILE_NAME = "folddb.sock";
 const FULL_SOCKET_FILE_NAME = "folddb-full.sock";
 
-const DATA_ROUTES = new Set([
+// Owner-only routes this client still speaks hand-rolled over the node's
+// control socket. These are NOT part of the app data plane the SDK covers
+// (query/mutation/scoped-search): they are node-owner surface — identity
+// bootstrap (`auto-identity`), schema registration (`declare`), and the owner
+// schema listing used to infer field mappers. The SDK deliberately models only
+// the app data plane (capability-scoped query/mutate/search), so these owner
+// verbs stay local; each is justified in the port PR body.
+const OWNER_DATA_ROUTES = new Set([
   "GET /api/schemas",
   "GET /api/system/auto-identity",
-  "POST /api/query",
-  "POST /api/mutation",
 ]);
+
+// A no-op capability store: this client authenticates as the node owner via the
+// `X-User-Hash` header on its Unix-domain transport, not via an app capability
+// token, so there is nothing to persist or replay. The SDK's `LastDbClient`
+// still requires a store to satisfy its constructor; this fulfills the
+// interface without touching any keychain/file.
+const noopCapabilityStore: CapabilityStore = {
+  async store() {},
+  async load() {
+    return null;
+  },
+  async remove() {},
+};
 
 export function defaultLastDbSocketPath(override?: string): string {
   if (process.env.DOGFOOD_GRAPH_LASTDB_SOCKET) {
@@ -129,11 +163,14 @@ export class LastDbNodeClient {
   private readonly socketPath: string;
   private userHash?: string;
   private readonly timeoutMs: number;
+  private readonly injectedTransport?: SdkTransport;
+  private dataClient?: LastDbClient;
 
   constructor(options: LastDbNodeClientOptions = {}) {
     this.socketPath = defaultLastDbSocketPath(options.socketPath);
     this.userHash = options.userHash;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.injectedTransport = options.transport;
   }
 
   get transport() {
@@ -235,24 +272,20 @@ export class LastDbNodeClient {
     mutationType: "create" | "update" = "create",
     fieldMapper?: LastDbFieldMapper,
   ) {
-    await this.ensureUserHash();
-    await this.request("POST", "/api/mutation", {
-      type: "mutation",
-      schema: schemaName,
-      fields_and_values: applyFieldMapper(record, fieldMapper),
-      key_value: { hash: keyHash, range: null },
-      mutation_type: mutationType,
+    const client = await this.data();
+    await client.mutate(schemaName, {
+      mutationType,
+      fields: applyFieldMapper(record, fieldMapper) as SdkQueryRow["fields"],
+      key: { hash: keyHash, range: null },
     });
   }
 
   async deleteRecord(schemaName: string, keyHash: string) {
-    await this.ensureUserHash();
-    await this.request("POST", "/api/mutation", {
-      type: "mutation",
-      schema: schemaName,
-      fields_and_values: {},
-      key_value: { hash: keyHash, range: null },
-      mutation_type: "delete",
+    const client = await this.data();
+    await client.mutate(schemaName, {
+      mutationType: "delete",
+      fields: {},
+      key: { hash: keyHash, range: null },
     });
   }
 
@@ -260,43 +293,47 @@ export class LastDbNodeClient {
     schemaName: string,
     fields: string[],
     fieldMapper?: LastDbFieldMapper,
-  ) {
-    await this.ensureUserHash();
+  ): Promise<QueryRow<T>[]> {
+    const client = await this.data();
     const requestFields = fields.map((field) => fieldMapper?.[field] ?? field);
-    const rows: QueryRow<T>[] = [];
-    const seen = new Set<string>();
-    let offset = 0;
-    for (let page = 0; page < PAGE_LIMIT; page += 1) {
-      const body = await this.request<{
-        results?: QueryRow<T>[];
-        data?: { results?: QueryRow<T>[] };
-        has_more?: boolean;
-      }>("POST", "/api/query", {
-        schema_name: schemaName,
-        fields: requestFields,
-        limit: PAGE_SIZE,
-        offset,
-      });
-      const pageRows = body.data?.results ?? body.results ?? [];
-      let added = 0;
-      for (const row of pageRows) {
-        const key = row.key?.hash ?? JSON.stringify(row.fields);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        rows.push({
-          ...row,
-          fields: reverseFieldMapper(
-            row.fields as Record<string, unknown>,
-            fieldMapper,
-          ) as T,
-        });
-        added += 1;
-      }
-      if (body.has_more !== true || pageRows.length === 0 || added === 0) break;
-      offset += pageRows.length;
-    }
-    return rows;
+    const result = await client.queryAll(
+      schemaName,
+      { fields: requestFields },
+      { pageSize: PAGE_SIZE },
+    );
+    return result.rows.map((row) => ({
+      key: row.keyValue,
+      fields: reverseFieldMapper(row.fields, fieldMapper) as T,
+    }));
   }
+
+  // --- SDK data plane ------------------------------------------------------
+
+  // Build (once) the SDK `LastDbClient` that carries the app data plane
+  // (query/queryAll/mutation). It rides a Unix-domain-socket transport with the
+  // node-owner `X-User-Hash` header, so the node resolves the caller as the
+  // owner exactly as the hand-rolled client did. The client is constructed
+  // directly (no `connect()` consent handshake) with a no-op capability store:
+  // a local owner tool holds no app capability token, and the data routes it
+  // uses do not require one.
+  private async data(): Promise<LastDbClient> {
+    if (this.dataClient) return this.dataClient;
+    await this.ensureUserHash();
+    const transport =
+      this.injectedTransport ??
+      udsTransport(this.socketPath, { "X-User-Hash": this.userHash as string });
+    this.dataClient = new LastDbClient(
+      DOGFOOD_GRAPH_APP_ID,
+      transport,
+      noopCapabilityStore,
+      null,
+      capabilityStoreKey(DOGFOOD_GRAPH_APP_ID, transport.target),
+      transport.target,
+    );
+    return this.dataClient;
+  }
+
+  // --- Owner-only hand-rolled transport ------------------------------------
 
   private async request<T>(
     method: "GET" | "POST",
@@ -379,7 +416,7 @@ export class LastDbNodeClient {
 
   private socketFor(method: string, path: string) {
     const route = `${method.toUpperCase()} ${path.split(/[?#]/, 1)[0]}`;
-    if (DATA_ROUTES.has(route)) return this.socketPath;
+    if (OWNER_DATA_ROUTES.has(route)) return this.socketPath;
     const fullSocketPath = join(dirname(this.socketPath), FULL_SOCKET_FILE_NAME);
     return existsSync(fullSocketPath) ? fullSocketPath : this.socketPath;
   }
