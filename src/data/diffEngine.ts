@@ -32,6 +32,7 @@ export function generateSessionDiffs(input: {
 }): DiffItem[] {
   const { session, revision, nodes, edges, observations, screenshots } = input;
   const diffs: DiffItem[] = [];
+  const nodeById = new Map(nodes.map((node) => [node.uxNode_id, node]));
   const observedNodeIds = new Set(
     observations
       .map((observation) => observation.expected_node_id)
@@ -46,6 +47,7 @@ export function generateSessionDiffs(input: {
   }
 
   for (const node of nodes) {
+    if (isRigRequiredNode(node)) continue;
     if (!observedNodeIds.has(node.uxNode_id)) {
       diffs.push(diff("missing_node", session, revision, {
         expected_ref: node.uxNode_id,
@@ -64,6 +66,8 @@ export function generateSessionDiffs(input: {
     const selectedEdge = edges.find(
       (edge) => edge.uxEdge_id === observation.selected_edge_id,
     );
+    const rigRequiredRemainder = isRigRequiredRemainder(observation, expectedNode);
+    const trimmedNotes = observation.notes?.trim();
 
     if (!observation.expected_node_id || observation.verdict === "unexpected") {
       diffs.push(diff("unexpected_node", session, revision, {
@@ -86,13 +90,15 @@ export function generateSessionDiffs(input: {
       }));
     }
 
-    if (observation.verdict === "blocked") {
-      diffs.push(diff("blocked", session, revision, {
+    if (observation.verdict === "blocked" && (!rigRequiredRemainder || !trimmedNotes)) {
+      diffs.push(diff(rigRequiredRemainder ? "note" : "blocked", session, revision, {
         expected_ref: observation.expected_node_id,
         observation_id: observation.observation_id,
-        severity: "blocker",
-        summary: `${observation.actual_title} blocked the dogfood run.`,
-        suggested_next_action: "file_product_bug",
+        severity: rigRequiredRemainder ? "info" : "blocker",
+        summary: rigRequiredRemainder
+          ? `${observation.actual_title} is rig-required and was not exercisable in this run.`
+          : `${observation.actual_title} blocked the dogfood run.`,
+        suggested_next_action: rigRequiredRemainder ? "accept" : "file_product_bug",
         screenshot_ids: linkedScreenshots.map((screenshot) => screenshot.screenshotAsset_id),
       }));
     }
@@ -118,25 +124,29 @@ export function generateSessionDiffs(input: {
       }));
     }
 
-    const trimmedNotes = observation.notes?.trim();
     if (trimmedNotes) {
       diffs.push(diff("note", session, revision, {
         expected_ref: observation.expected_node_id,
         observation_id: observation.observation_id,
         severity: "info",
         summary: `${observation.actual_title}: ${trimmedNotes}`,
-        suggested_next_action: "file_product_bug",
+        suggested_next_action: rigRequiredRemainder ? "accept" : "file_product_bug",
         screenshot_ids: linkedScreenshots.map((screenshot) => screenshot.screenshotAsset_id),
       }));
     }
   }
 
-  const reachedTerminal = revision.terminal_node_ids.some((nodeId) =>
-    observedNodeIds.has(nodeId),
-  );
+  const requiredTerminalIds = revision.terminal_node_ids.filter((nodeId) => {
+    const node = nodeById.get(nodeId);
+    return !node || !isRigRequiredNode(node);
+  });
+  const reachedTerminal =
+    requiredTerminalIds.length > 0
+      ? requiredTerminalIds.some((nodeId) => observedNodeIds.has(nodeId))
+      : requiredNodesSatisfied(nodes, observedNodeIds);
   diffs.push(
     diff(reachedTerminal ? "goal_satisfied" : "goal_not_satisfied", session, revision, {
-      expected_ref: revision.terminal_node_ids[0],
+      expected_ref: requiredTerminalIds[0] ?? revision.terminal_node_ids[0],
       severity: reachedTerminal ? "info" : "bug",
       summary: reachedTerminal
         ? "The session reached a valid terminal goal node."
@@ -146,6 +156,22 @@ export function generateSessionDiffs(input: {
   );
 
   return diffs;
+}
+
+function isRigRequiredNode(node?: UxNode) {
+  return node?.requires_rig === "true";
+}
+
+function isRigRequiredRemainder(observation: Observation, expectedNode?: UxNode) {
+  if (isRigRequiredNode(expectedNode)) return true;
+  const notes = observation.notes?.toLowerCase() ?? "";
+  return /\brig[- ]required\b/.test(notes) || notes.includes("not exercisable single-node");
+}
+
+function requiredNodesSatisfied(nodes: UxNode[], observedNodeIds: Set<string>) {
+  return nodes
+    .filter((node) => !isRigRequiredNode(node))
+    .every((node) => observedNodeIds.has(node.uxNode_id));
 }
 
 function diff(
