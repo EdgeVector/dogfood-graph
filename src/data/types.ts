@@ -34,6 +34,7 @@ export type UxNode = {
   data_expectations?: string;
   ux_notes?: string;
   loop_allowed?: "true" | "false";
+  requires_rig?: "true" | "false";
 };
 
 export type UxEdge = {

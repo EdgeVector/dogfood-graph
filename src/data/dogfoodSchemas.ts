@@ -97,6 +97,7 @@ export const dogfoodSchemas = {
       "data_expectations",
       "ux_notes",
       "loop_allowed",
+      "requires_rig",
     ],
     { acceptance_checks: textList, failure_modes: textList },
   ),
