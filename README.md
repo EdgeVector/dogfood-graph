@@ -40,6 +40,10 @@ The first implementation should focus on:
 This repo contains the initial public app scaffold. Implementation planning is
 tracked in F-Brain and executable PR-sized work is tracked in F-Kanban.
 
+The canonical repository is `lastdb:///dogfood-graph`. GitHub
+`EdgeVector/dogfood-graph` is a public read-only mirror; review artifacts should
+be LastGit change requests gated by `.lastgit/ci.sh`.
+
 ## Local Development
 
 Requirements:
