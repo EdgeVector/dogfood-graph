@@ -321,7 +321,10 @@ export class LastDbNodeClient {
     await this.ensureUserHash();
     const transport =
       this.injectedTransport ??
-      udsTransport(this.socketPath, { "X-User-Hash": this.userHash as string });
+      udsTransport(this.socketPath, {
+        "X-User-Hash": this.userHash as string,
+        "X-LastDB-Client": "dogfood-graph",
+      });
     this.dataClient = new LastDbClient(
       DOGFOOD_GRAPH_APP_ID,
       transport,
@@ -381,6 +384,7 @@ export class LastDbNodeClient {
           path,
           timeout: this.timeoutMs,
           headers: {
+            "X-LastDB-Client": "dogfood-graph",
             ...(this.userHash ? { "X-User-Hash": this.userHash } : {}),
             ...(encodedBody
               ? {

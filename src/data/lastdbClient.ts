@@ -100,6 +100,7 @@ export class LastDbClient {
       headers: {
         "Content-Type": "application/json",
         "X-User-Hash": this.userHash,
+        "X-LastDB-Client": "dogfood-graph",
         ...init.headers,
       },
     });
