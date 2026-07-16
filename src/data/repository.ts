@@ -33,6 +33,18 @@ export class ImmutableRecordError extends Error {
   }
 }
 
+function idOf<Name extends DogfoodSchemaName>(
+  schema: Name,
+  record: DogfoodRecordMap[Name],
+) {
+  const idField = idFields[schema];
+  const id = (record as Record<string, unknown>)[idField];
+  if (typeof id !== "string" || id.length === 0) {
+    throw new Error(`${schema} record is missing ${String(idField)}`);
+  }
+  return id;
+}
+
 export class MemoryRecordRepository<
   Name extends DogfoodSchemaName,
 > implements RecordRepository<DogfoodRecordMap[Name]>
@@ -72,12 +84,7 @@ export class MemoryRecordRepository<
   }
 
   private idOf(record: DogfoodRecordMap[Name]) {
-    const idField = idFields[this.schema];
-    const id = (record as Record<string, unknown>)[idField];
-    if (typeof id !== "string" || id.length === 0) {
-      throw new Error(`${this.schema} record is missing ${String(idField)}`);
-    }
-    return id;
+    return idOf(this.schema, record);
   }
 }
 
@@ -133,10 +140,7 @@ export class LastDbRecordRepository<
   }
 
   private idOf(record: DogfoodRecordMap[Name]) {
-    const idField = idFields[this.schema];
-    const id = (record as Record<string, unknown>)[idField];
-    if (typeof id !== "string") throw new Error(`Missing id for ${this.schema}`);
-    return id;
+    return idOf(this.schema, record);
   }
 }
 
