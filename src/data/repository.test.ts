@@ -9,7 +9,11 @@ import {
   fixtureSession,
 } from "./fixtures";
 import { LastDbClient } from "./lastdbClient";
-import { createMemoryRepositories, ImmutableRecordError } from "./repository";
+import {
+  createMemoryRepositories,
+  ImmutableRecordError,
+  LastDbRecordRepository,
+} from "./repository";
 
 describe("Dogfood Graph data model", () => {
   it("declares every app-local schema through /api/apps/declare-schema", async () => {
@@ -75,5 +79,23 @@ describe("Dogfood Graph data model", () => {
         change_summary: "mutated",
       }),
     ).rejects.toBeInstanceOf(ImmutableRecordError);
+  });
+
+  it("rejects blank LastDB record ids before mutating", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 500 }));
+    const client = new LastDbClient({
+      baseUrl: "http://lastdb.local",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const repo = new LastDbRecordRepository(
+      "DogfoodFlow",
+      ["dogfoodFlow_id", "title"],
+      client,
+    );
+
+    await expect(
+      repo.create({ ...fixtureFlow, dogfoodFlow_id: "" }),
+    ).rejects.toThrow("DogfoodFlow record is missing dogfoodFlow_id");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
