@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import http from "node:http";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { dogfoodSchemas } from "./dogfoodSchemas";
 import {
@@ -116,6 +118,58 @@ describe("field mappers", () => {
     expect(rows[0]?.fields).toMatchObject({
       dogfoodSession_id: "session-1",
       goal_revision_id: "goal-1",
+    });
+  });
+});
+
+describe("LastDbNodeClient request headers", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("labels owner-only node requests as dogfood-graph", async () => {
+    let headers: http.OutgoingHttpHeaders | undefined;
+
+    const requestMock = vi.spyOn(http, "request") as unknown as {
+      mockImplementation: (fn: (...args: unknown[]) => http.ClientRequest) => void;
+    };
+    requestMock.mockImplementation((...args: unknown[]) => {
+      const options = args[0] as http.RequestOptions;
+      const callback = args.find(
+        (arg): arg is (res: http.IncomingMessage) => void => typeof arg === "function",
+      );
+      headers = options.headers as http.OutgoingHttpHeaders | undefined;
+      const response = {
+        statusCode: 200,
+        on(event: string, handler: (chunk?: Buffer) => void) {
+          if (event === "data") {
+            queueMicrotask(() =>
+              handler(Buffer.from(JSON.stringify({ user_hash: "dogfood-graph-test" }))),
+            );
+          }
+          if (event === "end") queueMicrotask(() => handler());
+          return response;
+        },
+      };
+      queueMicrotask(() => callback?.(response as unknown as http.IncomingMessage));
+      return {
+        on: vi.fn().mockReturnThis(),
+        write: vi.fn(),
+        end: vi.fn(),
+        destroy: vi.fn(),
+      } as unknown as http.ClientRequest;
+    });
+
+    const client = new LastDbNodeClient({
+      socketPath: "/tmp/dogfood-graph-test.sock",
+      userHash: "dogfood-graph-test",
+    });
+
+    await client.autoIdentity();
+
+    expect(headers).toMatchObject({
+      "X-LastDB-Client": "dogfood-graph",
+      "X-User-Hash": "dogfood-graph-test",
     });
   });
 });
