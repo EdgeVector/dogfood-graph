@@ -16,6 +16,16 @@ export type QueryRow<T> = {
   fields: T;
 };
 
+/**
+ * Wire shape of the node's `HashRangeFilter` (externally-tagged Rust enum —
+ * see `fold_db::schema::types::field::HashRangeFilter`). Only the two
+ * variants this client needs: an exact point read by hash key, and a
+ * bounded, explicitly-paginated list — never an unfiltered scan.
+ */
+export type QueryFilter =
+  | { HashKey: string }
+  | { Page: { offset: number; limit: number } };
+
 export class LastDbClient {
   private readonly baseUrl: string;
   private readonly userHash: string;
@@ -66,12 +76,12 @@ export class LastDbClient {
     await this.mutate(schema, "delete", {}, keyHash);
   }
 
-  async query<T>(schema: DogfoodSchemaName, fields: string[]) {
+  async query<T>(schema: DogfoodSchemaName, fields: string[], filter?: QueryFilter) {
     const response = await this.request<{ data?: { results?: QueryRow<T>[] } }>(
       "/api/query",
       {
         method: "POST",
-        body: JSON.stringify({ schema, fields }),
+        body: JSON.stringify(filter ? { schema, fields, filter } : { schema, fields }),
       },
     );
     return response.data?.results ?? [];

@@ -98,4 +98,56 @@ describe("Dogfood Graph data model", () => {
     ).rejects.toThrow("DogfoodFlow record is missing dogfoodFlow_id");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it("get() issues a HashKey point read, never a full-schema scan", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ data: { results: [] } }), { status: 200 });
+    });
+    const client = new LastDbClient({
+      baseUrl: "http://lastdb.local",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    const repo = new LastDbRecordRepository(
+      "DogfoodFlow",
+      ["dogfoodFlow_id", "title"],
+      client,
+    );
+
+    await repo.get("flow-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body.filter).toEqual({ HashKey: "flow-1" });
+  });
+
+  it("list() drains explicit Page filters instead of an unfiltered query", async () => {
+    const pages = [
+      Array.from({ length: 2 }, (_, i) => ({ fields: { dogfoodFlow_id: `f${i}` } })),
+      [] as { fields: { dogfoodFlow_id: string } }[],
+    ];
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.filter).toHaveProperty("Page");
+      const page = pages.shift() ?? [];
+      return new Response(JSON.stringify({ data: { results: page } }), { status: 200 });
+    });
+    const client = new LastDbClient({
+      baseUrl: "http://lastdb.local",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    const repo = new LastDbRecordRepository(
+      "DogfoodFlow",
+      ["dogfoodFlow_id", "title"],
+      client,
+    );
+
+    const rows = await repo.list();
+
+    expect(rows).toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body.filter).toEqual({ Page: { offset: 0, limit: 500 } });
+  });
 });

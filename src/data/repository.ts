@@ -2,6 +2,16 @@ import { LastDbClient } from "./lastdbClient";
 import type { DogfoodSchemaName } from "./dogfoodSchemas";
 import type { DogfoodRecordMap } from "./types";
 
+// Every dogfood-graph schema is Hash-keyed by its own id field (see
+// `idFields` below), so a point read is always an exact `HashKey` filter —
+// never a full-schema scan. Bounded page size for the explicit,
+// non-scan list drain in `LastDbRecordRepository.list()`.
+const LIST_PAGE_SIZE = 500;
+// Safety ceiling so a runaway schema can't turn `list()` into an unbounded
+// drain; mirrors the SDK's `queryAll` `maxRows` default order of magnitude
+// scaled down for this app's expected record counts.
+const LIST_MAX_ROWS = 20_000;
+
 const idFields = {
   DogfoodFlow: "dogfoodFlow_id",
   GoalRevision: "goalRevision_id",
@@ -108,16 +118,31 @@ export class LastDbRecordRepository<
   }
 
   async get(id: string) {
-    const rows = await this.list();
-    return rows.find((record) => this.idOf(record) === id);
-  }
-
-  async list() {
     const rows = await this.client.query<DogfoodRecordMap[Name]>(
       this.schema,
       this.fields,
+      { HashKey: id },
     );
-    return rows.map((row) => row.fields);
+    return rows[0]?.fields;
+  }
+
+  // Bounded, explicitly-paginated drain — never an unfiltered `/api/query`.
+  // Terminates on a short page (no pagination metadata required) or the
+  // `LIST_MAX_ROWS` safety ceiling, whichever comes first.
+  async list() {
+    const records: DogfoodRecordMap[Name][] = [];
+    let offset = 0;
+    for (;;) {
+      const rows = await this.client.query<DogfoodRecordMap[Name]>(
+        this.schema,
+        this.fields,
+        { Page: { offset, limit: LIST_PAGE_SIZE } },
+      );
+      records.push(...rows.map((row) => row.fields));
+      if (rows.length < LIST_PAGE_SIZE || records.length >= LIST_MAX_ROWS) break;
+      offset += LIST_PAGE_SIZE;
+    }
+    return records;
   }
 
   async update(id: string, patch: Partial<DogfoodRecordMap[Name]>) {
