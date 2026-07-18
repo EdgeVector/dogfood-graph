@@ -68,6 +68,11 @@ Socket: DOGFOOD_GRAPH_LASTDB_SOCKET, FOLDDB_SOCKET_PATH, FBRAIN_FOLDDB_SOCKET, o
   process.exit(2);
 }
 
+// `queryAll` below (list/export/diff) is this app's explicit offline admin
+// tool for dev seeding/export/import/diff generation, never a live product
+// path — allowed bulk per design-lastdb-scan-deprecation-path. Product-path
+// reads go through `LastDbRecordRepository` (see ../data/repository.ts),
+// which never issues an unfiltered query.
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   const client = new LastDbNodeClient();
