@@ -299,7 +299,7 @@ export class LastDbNodeClient {
     const result = await client.queryAll(
       schemaName,
       { fields: requestFields },
-      { pageSize: PAGE_SIZE },
+      { pageSize: PAGE_SIZE, allowFullScan: true },
     );
     return result.rows.map((row) => ({
       key: row.keyValue,
