@@ -40,9 +40,8 @@ The first implementation should focus on:
 This repo contains the initial public app scaffold. Implementation planning is
 tracked in F-Brain and executable PR-sized work is tracked in F-Kanban.
 
-The canonical repository is `http://localhost:3300/EdgeVector/dogfood-graph.git`. GitHub
-`EdgeVector/dogfood-graph` is a public read-only mirror; review artifacts should
-be LastGit change requests gated by `.lastgit/ci.sh`.
+The canonical repository is GitHub `EdgeVector/dogfood-graph`. Review artifacts are
+GitHub PRs gated by the `ci-required` check (see `docs/github-venue.md`).
 
 ## Local Development
 
