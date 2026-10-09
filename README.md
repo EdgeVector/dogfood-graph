@@ -67,7 +67,6 @@ Run the validation suite:
 ```sh
 npm run lint
 npm run typecheck
-npm test
 npm run build
 ```
 
@@ -84,6 +83,8 @@ seeding new public EdgeVector repositories.
 
 - Vite for the local dev server and production build
 - React with TypeScript for the UI
-- Vitest and Testing Library for component tests
 - ESLint for static checks
 - GitHub Actions for CI on pull requests and pushes to `main`
+
+The tests are deleted (Tom, 2026-10-09). The gate runs lint, typecheck, build
+and the bootstrap check.

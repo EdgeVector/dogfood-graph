@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  gate:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -26,8 +26,8 @@ jobs:
   ci-required:
     name: ci-required
     if: always()
-    needs: [test]
+    needs: [gate]
     runs-on: ubuntu-24.04
     steps:
       - name: Require all jobs to succeed
-        run: test "${{ needs.test.result }}" = "success"
+        run: test "${{ needs.gate.result }}" = "success"
