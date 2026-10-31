@@ -41,9 +41,9 @@ export type LastDbSchemaMap = Record<DogfoodSchemaName, string>;
 // `mutation_mappers`; writers must apply them or mutations fail with
 // `unknown_fields`. Nodes that materialize app-declared schemas verbatim
 // produce no mappers, so an absent/empty mapper is a no-op.
-export type LastDbFieldMapper = Record<string, string>;
+export type LastDbFieldRenames = Record<string, string>;
 
-export type LastDbFieldMapperMap = Partial<Record<DogfoodSchemaName, LastDbFieldMapper>>;
+export type LastDbFieldRenameMap = Partial<Record<DogfoodSchemaName, LastDbFieldRenames>>;
 
 export type LastDbRuntimeSchema = {
   name?: string;
@@ -57,9 +57,9 @@ const FIELD_ALIASES: Record<string, string[]> = {
   screenshot_ids: ["screenshot_id"],
 };
 
-export function applyFieldMapper(
+export function applyFieldRenames(
   record: Record<string, unknown>,
-  mapper: LastDbFieldMapper | undefined,
+  mapper: LastDbFieldRenames | undefined,
 ): Record<string, unknown> {
   if (!mapper || Object.keys(mapper).length === 0) return record;
   return Object.fromEntries(
@@ -67,9 +67,9 @@ export function applyFieldMapper(
   );
 }
 
-export function reverseFieldMapper(
+export function reverseFieldRenames(
   record: Record<string, unknown>,
-  mapper: LastDbFieldMapper | undefined,
+  mapper: LastDbFieldRenames | undefined,
 ): Record<string, unknown> {
   if (!mapper || Object.keys(mapper).length === 0) return record;
   const reversed = Object.fromEntries(
@@ -80,10 +80,10 @@ export function reverseFieldMapper(
   );
 }
 
-export function inferFieldMapper(
+export function inferFieldRenames(
   appFields: readonly string[],
   runtimeFields: readonly string[],
-): LastDbFieldMapper {
+): LastDbFieldRenames {
   const runtime = new Set(runtimeFields);
   const entries = appFields.flatMap((field): [string, string][] => {
     if (runtime.has(field)) return [];
@@ -98,14 +98,14 @@ export function inferFieldMapper(
   return Object.fromEntries(entries);
 }
 
-export function mergeFieldMapperMaps(
-  ...maps: LastDbFieldMapperMap[]
-): LastDbFieldMapperMap {
-  const merged: LastDbFieldMapperMap = {};
+export function mergeFieldRenameMaps(
+  ...maps: LastDbFieldRenameMap[]
+): LastDbFieldRenameMap {
+  const merged: LastDbFieldRenameMap = {};
   for (const map of maps) {
     for (const [schema, mapper] of Object.entries(map) as [
       DogfoodSchemaName,
-      LastDbFieldMapper | undefined,
+      LastDbFieldRenames | undefined,
     ][]) {
       if (!mapper || Object.keys(mapper).length === 0) continue;
       merged[schema] = { ...(merged[schema] ?? {}), ...mapper };
@@ -128,7 +128,7 @@ const FULL_SOCKET_FILE_NAME = "folddb-full.sock";
 // control socket. These are NOT part of the app data plane the SDK covers
 // (query/mutation/scoped-search): they are node-owner surface — identity
 // bootstrap (`auto-identity`), schema registration (`declare`), and the owner
-// schema listing used to infer field mappers. The SDK deliberately models only
+// schema listing used to infer field renames. The SDK deliberately models only
 // the app data plane (capability-scoped query/mutate/search), so these owner
 // verbs stay local; each is justified in the port PR body.
 const OWNER_DATA_ROUTES = new Set([
@@ -219,21 +219,21 @@ export class LastDbNodeClient {
     return body.data?.schemas ?? body.schemas ?? [];
   }
 
-  async inferFieldMappers(schemas: LastDbSchemaMap): Promise<LastDbFieldMapperMap> {
+  async inferFieldRenameMap(schemas: LastDbSchemaMap): Promise<LastDbFieldRenameMap> {
     const runtimeSchemas = await this.listSchemas();
     const entries = (Object.entries(schemas) as [DogfoodSchemaName, string][]).flatMap(
-      ([schemaName, runtimeName]): [DogfoodSchemaName, LastDbFieldMapper][] => {
+      ([schemaName, runtimeName]): [DogfoodSchemaName, LastDbFieldRenames][] => {
         const runtimeSchema = runtimeSchemas.find(
           (schema) => schema.name === runtimeName || schema.identity_hash === runtimeName,
         );
-        const mapper = inferFieldMapper(
+        const mapper = inferFieldRenames(
           dogfoodSchemas[schemaName].fields,
           runtimeSchema?.fields ?? [],
         );
         return Object.keys(mapper).length > 0 ? [[schemaName, mapper]] : [];
       },
     );
-    return Object.fromEntries(entries) as LastDbFieldMapperMap;
+    return Object.fromEntries(entries) as LastDbFieldRenameMap;
   }
 
   async declareSchema(schema: SchemaDefinition) {
@@ -270,12 +270,12 @@ export class LastDbNodeClient {
     record: Record<string, unknown>,
     keyHash: string,
     mutationType: "create" | "update" = "create",
-    fieldMapper?: LastDbFieldMapper,
+    fieldRenames?: LastDbFieldRenames,
   ) {
     const client = await this.data();
     await client.mutate(schemaName, {
       mutationType,
-      fields: applyFieldMapper(record, fieldMapper) as SdkQueryRow["fields"],
+      fields: applyFieldRenames(record, fieldRenames) as SdkQueryRow["fields"],
       key: { hash: keyHash, range: null },
     });
   }
@@ -292,10 +292,10 @@ export class LastDbNodeClient {
   async queryAll<T = Record<string, unknown>>(
     schemaName: string,
     fields: string[],
-    fieldMapper?: LastDbFieldMapper,
+    fieldRenames?: LastDbFieldRenames,
   ): Promise<QueryRow<T>[]> {
     const client = await this.data();
-    const requestFields = fields.map((field) => fieldMapper?.[field] ?? field);
+    const requestFields = fields.map((field) => fieldRenames?.[field] ?? field);
     const result = await client.queryAll(
       schemaName,
       { fields: requestFields },
@@ -303,7 +303,7 @@ export class LastDbNodeClient {
     );
     return result.rows.map((row) => ({
       key: row.keyValue,
-      fields: reverseFieldMapper(row.fields, fieldMapper) as T,
+      fields: reverseFieldRenames(row.fields, fieldRenames) as T,
     }));
   }
 

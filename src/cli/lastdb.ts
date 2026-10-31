@@ -15,9 +15,9 @@ import {
 } from "../data/fixtures.ts";
 import {
   LastDbNodeClient,
-  type LastDbFieldMapperMap,
+  type LastDbFieldRenameMap,
   type LastDbSchemaMap,
-  mergeFieldMapperMaps,
+  mergeFieldRenameMaps,
 } from "../data/lastdbNodeClient.ts";
 import type { DogfoodRecordMap } from "../data/types.ts";
 
@@ -25,13 +25,13 @@ const CONFIG_PATH =
   process.env.DOGFOOD_GRAPH_LASTDB_CONFIG ??
   join(process.cwd(), ".dogfood-graph", "lastdb-schemas.json");
 
-// Optional per-schema field renames (see LastDbFieldMapper). Present when the
+// Optional per-schema field renames (see LastDbFieldRenames). Present when the
 // node's schemas were materialized through the schema service, which unifies
 // same-purpose fields onto existing canonical names; absent on nodes that
 // materialize app-declared schemas verbatim.
 const MAPPERS_PATH =
   process.env.DOGFOOD_GRAPH_LASTDB_MAPPERS ??
-  join(process.cwd(), ".dogfood-graph", "lastdb-field-mappers.json");
+  join(process.cwd(), ".dogfood-graph", "lastdb-field-renames.json");
 
 const idFields = {
   DogfoodFlow: "dogfoodFlow_id",
@@ -257,18 +257,18 @@ async function readConfig(): Promise<LastDbSchemaMap | null> {
   return JSON.parse(await readFile(CONFIG_PATH, "utf8")) as LastDbSchemaMap;
 }
 
-async function readMappers(): Promise<LastDbFieldMapperMap> {
+async function readMappers(): Promise<LastDbFieldRenameMap> {
   if (!existsSync(MAPPERS_PATH)) return {};
-  return JSON.parse(await readFile(MAPPERS_PATH, "utf8")) as LastDbFieldMapperMap;
+  return JSON.parse(await readFile(MAPPERS_PATH, "utf8")) as LastDbFieldRenameMap;
 }
 
 async function loadMappers(
   client: LastDbNodeClient,
   schemas: LastDbSchemaMap,
-): Promise<LastDbFieldMapperMap> {
+): Promise<LastDbFieldRenameMap> {
   const explicit = await readMappers();
-  const inferred = await client.inferFieldMappers(schemas);
-  return mergeFieldMapperMaps(inferred, explicit);
+  const inferred = await client.inferFieldRenameMap(schemas);
+  return mergeFieldRenameMaps(inferred, explicit);
 }
 
 async function writeConfig(schemas: LastDbSchemaMap) {
@@ -279,7 +279,7 @@ async function writeConfig(schemas: LastDbSchemaMap) {
 async function seedFixtures(
   client: LastDbNodeClient,
   schemas: LastDbSchemaMap,
-  mappers: LastDbFieldMapperMap,
+  mappers: LastDbFieldRenameMap,
 ) {
   const records: { [Name in DogfoodSchemaName]?: DogfoodRecordMap[Name][] } = {
     DogfoodFlow: [fixtureFlow],
