@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import http from "node:http";
 
 import {
@@ -122,19 +122,6 @@ export type QueryRow<T = Record<string, unknown>> = {
 const DEFAULT_TIMEOUT_MS = 30_000;
 const PAGE_SIZE = 1000;
 const SOCKET_FILE_NAME = "folddb.sock";
-const FULL_SOCKET_FILE_NAME = "folddb-full.sock";
-
-// Owner-only routes this client still speaks hand-rolled over the node's
-// control socket. These are NOT part of the app data plane the SDK covers
-// (query/mutation/scoped-search): they are node-owner surface — identity
-// bootstrap (`auto-identity`), schema registration (`declare`), and the owner
-// schema listing used to infer field renames. The SDK deliberately models only
-// the app data plane (capability-scoped query/mutate/search), so these owner
-// verbs stay local; each is justified in the port PR body.
-const OWNER_DATA_ROUTES = new Set([
-  "GET /api/schemas",
-  "GET /api/system/auto-identity",
-]);
 
 // A no-op capability store: this client authenticates as the node owner via the
 // `X-User-Hash` header on its Unix-domain transport, not via an app capability
@@ -369,12 +356,20 @@ export class LastDbNodeClient {
     return { ok: false, status: response.status, body: response.body };
   }
 
+  // Owner-only routes this client still speaks hand-rolled over the node's
+  // control socket. These are NOT part of the app data plane the SDK covers
+  // (query/mutation/scoped-search): they are node-owner surface — identity
+  // bootstrap (`auto-identity`), schema registration (`declare`), and the owner
+  // schema listing used to infer field renames. The SDK deliberately models only
+  // the app data plane (capability-scoped query/mutate/search), so these owner
+  // verbs stay local; each is justified in the port PR body. They share the one
+  // owner socket with every other route.
   private rawRequest(
     method: "GET" | "POST",
     path: string,
     body?: unknown,
   ): Promise<{ status: number; body: unknown }> {
-    const socketPath = this.socketFor(method, path);
+    const socketPath = this.socketPath;
     const encodedBody = body === undefined ? undefined : JSON.stringify(body);
     return new Promise((resolve, reject) => {
       const req = http.request(
@@ -416,12 +411,5 @@ export class LastDbNodeClient {
       if (encodedBody) req.write(encodedBody);
       req.end();
     });
-  }
-
-  private socketFor(method: string, path: string) {
-    const route = `${method.toUpperCase()} ${path.split(/[?#]/, 1)[0]}`;
-    if (OWNER_DATA_ROUTES.has(route)) return this.socketPath;
-    const fullSocketPath = join(dirname(this.socketPath), FULL_SOCKET_FILE_NAME);
-    return existsSync(fullSocketPath) ? fullSocketPath : this.socketPath;
   }
 }
