@@ -15,23 +15,13 @@ import {
 } from "../data/fixtures.ts";
 import {
   LastDbNodeClient,
-  type LastDbFieldRenameMap,
   type LastDbSchemaMap,
-  mergeFieldRenameMaps,
 } from "../data/lastdbNodeClient.ts";
 import type { DogfoodRecordMap } from "../data/types.ts";
 
 const CONFIG_PATH =
   process.env.DOGFOOD_GRAPH_LASTDB_CONFIG ??
   join(process.cwd(), ".dogfood-graph", "lastdb-schemas.json");
-
-// Optional per-schema field renames (see LastDbFieldRenames). Present when the
-// node's schemas were materialized through the schema service, which unifies
-// same-purpose fields onto existing canonical names; absent on nodes that
-// materialize app-declared schemas verbatim.
-const MAPPERS_PATH =
-  process.env.DOGFOOD_GRAPH_LASTDB_MAPPERS ??
-  join(process.cwd(), ".dogfood-graph", "lastdb-field-renames.json");
 
 const idFields = {
   DogfoodFlow: "dogfoodFlow_id",
@@ -64,7 +54,7 @@ diff loads a stored session (revision, nodes, edges, observations,
 screenshots), runs the diff engine, and persists the resulting DiffItems.
 
 Config: ${CONFIG_PATH}
-Socket: DOGFOOD_GRAPH_LASTDB_SOCKET, FOLDDB_SOCKET_PATH, FBRAIN_FOLDDB_SOCKET, or ~/.folddb/data/folddb.sock`);
+Socket: DOGFOOD_GRAPH_LASTDB_SOCKET, FOLDDB_SOCKET_PATH, or ~/.lastdb/data/folddb.sock`);
   process.exit(2);
 }
 
@@ -96,8 +86,7 @@ async function main() {
 
   if (command === "seed") {
     const schemas = await ensureSchemas(client);
-    const mappers = await loadMappers(client, schemas);
-    const counts = await seedFixtures(client, schemas, mappers);
+    const counts = await seedFixtures(client, schemas);
     console.log(JSON.stringify({ ok: true, counts, config: CONFIG_PATH }, null, 2));
     return;
   }
@@ -105,21 +94,17 @@ async function main() {
   if (command === "list") {
     const schema = parseSchemaName(args[0]);
     const schemas = await ensureSchemas(client);
-    const mappers = await loadMappers(client, schemas);
-    const rows = await client.queryAll(schemas[schema], schemaFields(schema), mappers[schema]);
+    const rows = await client.queryAll(schemas[schema], schemaFields(schema));
     console.log(JSON.stringify(rows.map((row) => row.fields), null, 2));
     return;
   }
 
   if (command === "export") {
     const schemas = await ensureSchemas(client);
-    const mappers = await loadMappers(client, schemas);
     const entries = await Promise.all(
       schemaNames().map(async (schema) => [
         schema,
-        (
-          await client.queryAll(schemas[schema], schemaFields(schema), mappers[schema])
-        ).map((row) => row.fields),
+        (await client.queryAll(schemas[schema], schemaFields(schema))).map((row) => row.fields),
       ]),
     );
     console.log(JSON.stringify(Object.fromEntries(entries), null, 2));
@@ -131,14 +116,7 @@ async function main() {
     const record = parseRecord(args[1]);
     const mutation = args[2] === "update" ? "update" : "create";
     const schemas = await ensureSchemas(client);
-    const mappers = await loadMappers(client, schemas);
-    await client.putRecord(
-      schemas[schema],
-      record,
-      idOf(schema, record),
-      mutation,
-      mappers[schema],
-    );
+    await client.putRecord(schemas[schema], record, idOf(schema, record), mutation);
     console.log(JSON.stringify({ ok: true, schema, id: idOf(schema, record), mutation }));
     return;
   }
@@ -155,18 +133,11 @@ async function main() {
       throw new Error(`unknown schema name(s) in ${path}: ${unknown.join(", ")}`);
     }
     const schemas = await ensureSchemas(client);
-    const mappers = await loadMappers(client, schemas);
     const counts: Partial<Record<DogfoodSchemaName, number>> = {};
     for (const schema of schemaNames()) {
       const rows = records[schema] ?? [];
       for (const record of rows) {
-        await client.putRecord(
-          schemas[schema],
-          record,
-          idOf(schema, record),
-          mutation,
-          mappers[schema],
-        );
+        await client.putRecord(schemas[schema], record, idOf(schema, record), mutation);
       }
       if (rows.length > 0) counts[schema] = rows.length;
     }
@@ -178,9 +149,8 @@ async function main() {
     const sessionId = args[0];
     if (!sessionId) usage();
     const schemas = await ensureSchemas(client);
-    const mappers = await loadMappers(client, schemas);
     const fetch = async <Name extends DogfoodSchemaName>(schema: Name) =>
-      (await client.queryAll(schemas[schema], schemaFields(schema), mappers[schema])).map(
+      (await client.queryAll(schemas[schema], schemaFields(schema))).map(
         (row) => row.fields,
       ) as DogfoodRecordMap[Name][];
 
@@ -224,7 +194,6 @@ async function main() {
         item as unknown as Record<string, unknown>,
         item.diffItem_id,
         "create",
-        mappers.DiffItem,
       );
     }
     console.log(JSON.stringify({ ok: true, session: sessionId, diffs }, null, 2));
@@ -257,30 +226,12 @@ async function readConfig(): Promise<LastDbSchemaMap | null> {
   return JSON.parse(await readFile(CONFIG_PATH, "utf8")) as LastDbSchemaMap;
 }
 
-async function readMappers(): Promise<LastDbFieldRenameMap> {
-  if (!existsSync(MAPPERS_PATH)) return {};
-  return JSON.parse(await readFile(MAPPERS_PATH, "utf8")) as LastDbFieldRenameMap;
-}
-
-async function loadMappers(
-  client: LastDbNodeClient,
-  schemas: LastDbSchemaMap,
-): Promise<LastDbFieldRenameMap> {
-  const explicit = await readMappers();
-  const inferred = await client.inferFieldRenameMap(schemas);
-  return mergeFieldRenameMaps(inferred, explicit);
-}
-
 async function writeConfig(schemas: LastDbSchemaMap) {
   await mkdir(dirname(CONFIG_PATH), { recursive: true });
   await writeFile(CONFIG_PATH, `${JSON.stringify(schemas, null, 2)}\n`);
 }
 
-async function seedFixtures(
-  client: LastDbNodeClient,
-  schemas: LastDbSchemaMap,
-  mappers: LastDbFieldRenameMap,
-) {
+async function seedFixtures(client: LastDbNodeClient, schemas: LastDbSchemaMap) {
   const records: { [Name in DogfoodSchemaName]?: DogfoodRecordMap[Name][] } = {
     DogfoodFlow: [fixtureFlow],
     GoalRevision: [fixtureGoalRevision],
@@ -304,7 +255,6 @@ async function seedFixtures(
         record as Record<string, unknown>,
         idOf(schema, record as Record<string, unknown>),
         "create",
-        mappers[schema],
       );
     }
     if (schemaRecords.length > 0) counts[schema] = schemaRecords.length;
