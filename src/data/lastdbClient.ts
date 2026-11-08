@@ -7,7 +7,6 @@ import type { AppSchemaDeclaration, SchemaDefinition } from "./schemaTypes";
 
 export type LastDbClientOptions = {
   baseUrl?: string;
-  userHash?: string;
   fetchImpl?: typeof fetch;
 };
 
@@ -28,12 +27,10 @@ export type QueryFilter =
 
 export class LastDbClient {
   private readonly baseUrl: string;
-  private readonly userHash: string;
   private readonly fetchImpl: typeof fetch;
 
   constructor(options: LastDbClientOptions = {}) {
     this.baseUrl = options.baseUrl?.replace(/\/$/, "") ?? "";
-    this.userHash = options.userHash ?? "dogfood-graph-local";
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
@@ -109,7 +106,6 @@ export class LastDbClient {
       ...init,
       headers: {
         "Content-Type": "application/json",
-        "X-User-Hash": this.userHash,
         "X-LastDB-Client": "dogfood-graph",
         ...init.headers,
       },

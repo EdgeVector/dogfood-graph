@@ -38,7 +38,7 @@ The first implementation should focus on:
 ## Repository Status
 
 This repo contains the initial public app scaffold. Implementation planning is
-tracked in F-Brain and executable PR-sized work is tracked in F-Kanban.
+tracked in brain and executable PR-sized work is tracked in kanban.
 
 The canonical repository is GitHub `EdgeVector/dogfood-graph`. Review artifacts are
 GitHub PRs gated by the `ci-required` check (see `docs/github-venue.md`).
